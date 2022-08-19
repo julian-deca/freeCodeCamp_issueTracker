@@ -7,6 +7,7 @@ module.exports = function (app) {
   const cors = require("cors");
   require("dotenv").config();
   const mongoose = require("mongoose");
+  const objId = mongoose.Types.ObjectId;
   app.use(cors());
   mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -51,7 +52,7 @@ module.exports = function (app) {
         { $match: { name: project } },
         { $unwind: "$issues" },
         _id != undefined
-          ? { $match: { "issues._id": ObjectId(_id) } }
+          ? { $match: { "issues._id": objId(_id) } }
           : { $match: {} },
         open != undefined
           ? { $match: { "issues.open": open } }
@@ -124,9 +125,83 @@ module.exports = function (app) {
 
     .put(function (req, res) {
       let project = req.params.project;
-    })
+      const {
+        _id,
+        open,
+        issue_title,
+        issue_text,
+        created_by,
+        assigned_to,
+        status_text,
+      } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" });
+        return;
+      }
+      if (
+        !open &&
+        !issue_title &&
+        !issue_text &&
+        !created_by &&
+        !assigned_to &&
+        !status_text
+      ) {
+        res.json({ error: "no update field(s) sent", _id: _id });
+        return;
+      }
 
+      Project.findOne({ name: project }, (err, data) => {
+        if (!data || err) {
+          res.json({ error: "could not update", _id: _id });
+        } else {
+          const issueData = data.issues.id(_id);
+          if (!issueData) {
+            res.json({ error: "could not update", _id: _id });
+            return;
+          }
+          issueData.issue_title = issue_title || issueData.issue_title;
+          issueData.issue_text = issue_text || issueData.issue_text;
+          issueData.created_by = created_by || issueData.created_by;
+          issueData.assigned_to = assigned_to || issueData.assigned_to;
+          issueData.status_text = status_text || issueData.status_text;
+          issueData.updated_on = new Date();
+          issueData.open = open;
+          data.save((err, data) => {
+            if (err || !data) {
+              res.json({ error: "could not update", _id: _id });
+            } else {
+              res.json({ result: "successfully updated", _id: _id });
+            }
+          });
+        }
+      });
+    })
     .delete(function (req, res) {
       let project = req.params.project;
+      const { _id } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" });
+        return;
+      }
+      Project.findOne({ name: project }, (err, data) => {
+        if (!data || err) {
+          res.json({ error: "could not delete", _id: _id });
+        } else {
+          const issueData = data.issues.id(_id);
+          if (!issueData) {
+            res.json({ error: "could not delete", _id: _id });
+            return;
+          }
+          issueData.remove();
+
+          data.save((err, data) => {
+            if (err || !data) {
+              res.json({ error: "could not delete", _id: _id });
+            } else {
+              res.json({ result: "successfully deleted", _id: _id });
+            }
+          });
+        }
+      });
     });
 };
